@@ -1,0 +1,32 @@
+name = "pharmacare-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ---------------------------------------------------------------------------
+# D1 database (SQL) — stores medicines, categories, orders, users, etc.
+# After creating the DB with `wrangler d1 create pharmacare-db`, paste the
+# returned database_id below.
+# ---------------------------------------------------------------------------
+[[d1_databases]]
+binding = "DB"
+database_name = "pharmacare-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+# ---------------------------------------------------------------------------
+# R2 bucket — stores uploaded prescription images/PDFs.
+# Create with `wrangler r2 bucket create pharmacare-prescriptions`.
+# ---------------------------------------------------------------------------
+[[r2_buckets]]
+binding = "PRESCRIPTIONS"
+bucket_name = "pharmacare-prescriptions"
+
+# ---------------------------------------------------------------------------
+# Secrets (set with `wrangler secret put <NAME>`, never commit real values):
+#   JWT_SECRET       - random long string used to sign auth tokens
+#   MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, MPESA_PASSKEY, MPESA_SHORTCODE
+#     - only needed once you wire up the real Daraja API in src/mpesa.ts
+# ---------------------------------------------------------------------------
+[vars]
+ENVIRONMENT = "production"
+CORS_ORIGIN = "*"
