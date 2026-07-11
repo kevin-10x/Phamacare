@@ -11,10 +11,16 @@ export default function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState('mpesa');
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [prescriptionId, setPrescriptionId] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponMsg, setCouponMsg] = useState('');
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState('');
 
   const needsRx = items.some((i) => i.requires_prescription);
+  const deliveryFee = subtotal > 3000 ? 0 : 200;
+  const couponAmount = subtotal * (couponDiscount / 100);
+  const total = subtotal - couponAmount + deliveryFee;
 
   useEffect(() => {
     if (needsRx) {
@@ -23,6 +29,19 @@ export default function Checkout() {
       ).catch(() => {});
     }
   }, [needsRx]);
+
+  async function applyCoupon() {
+    setCouponMsg('');
+    setCouponDiscount(0);
+    if (!couponCode.trim()) return;
+    try {
+      const data = await api.post('/api/cart/coupon', { couponCode: couponCode.trim() });
+      setCouponDiscount(data.discountPercent);
+      setCouponMsg(`Coupon applied! ${data.discountPercent}% off`);
+    } catch (e: any) {
+      setCouponMsg(e.message || 'Invalid coupon');
+    }
+  }
 
   async function placeOrder() {
     setError('');
@@ -46,21 +65,13 @@ export default function Checkout() {
     }
   }
 
-  const total = subtotal + (subtotal > 3000 ? 0 : 200);
-
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
       <h1 className="font-display text-3xl font-semibold mb-8">Checkout</h1>
 
       <div className="card p-6 mb-6">
         <h2 className="font-medium mb-4">Delivery address</h2>
-        <textarea
-          className="input"
-          rows={3}
-          placeholder="Estate, street, house/apartment number, town"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-        />
+        <textarea className="input" rows={3} placeholder="Estate, street, house/apartment number, town" value={address} onChange={(e) => setAddress(e.target.value)} />
       </div>
 
       {needsRx && (
@@ -68,21 +79,28 @@ export default function Checkout() {
           <h2 className="font-medium mb-4">Select an approved prescription</h2>
           {prescriptions.length === 0 ? (
             <p className="text-sm text-sienna">
-              No approved prescriptions found. <a href="/prescriptions" className="underline">Upload one</a> and
-              wait for pharmacist approval before checking out.
+              No approved prescriptions found. <a href="/prescriptions" className="underline">Upload one</a> and wait for pharmacist approval before checking out.
             </p>
           ) : (
             <select className="input" value={prescriptionId} onChange={(e) => setPrescriptionId(e.target.value)}>
               <option value="">Select prescription…</option>
               {prescriptions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.file_name} — approved
-                </option>
+                <option key={p.id} value={p.id}>{p.file_name} — approved</option>
               ))}
             </select>
           )}
         </div>
       )}
+
+      <div className="card p-6 mb-6">
+        <h2 className="font-medium mb-4">Coupon code</h2>
+        <div className="flex gap-2">
+          <input className="input flex-1" placeholder="Enter coupon code" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} />
+          <button onClick={applyCoupon} className="btn-secondary !py-2 text-sm shrink-0">Apply</button>
+        </div>
+        {couponMsg && <p className={`text-sm mt-2 ${couponDiscount > 0 ? 'text-clove2' : 'text-sienna'}`}>{couponMsg}</p>}
+        <p className="text-xs text-ink/40 mt-2">Try: WELCOME10, SAVE500, PHARMA20</p>
+      </div>
 
       <div className="card p-6 mb-6">
         <h2 className="font-medium mb-4">Payment method</h2>
@@ -93,32 +111,23 @@ export default function Checkout() {
             ['cod', 'Cash on delivery'],
           ].map(([value, label]) => (
             <label key={value} className="flex items-center gap-3 p-3 border border-mist rounded-lg cursor-pointer">
-              <input
-                type="radio"
-                name="payment"
-                value={value}
-                checked={paymentMethod === value}
-                onChange={() => setPaymentMethod(value)}
-              />
+              <input type="radio" name="payment" value={value} checked={paymentMethod === value} onChange={() => setPaymentMethod(value)} />
               {label}
             </label>
           ))}
           {paymentMethod === 'mpesa' && (
-            <input
-              className="input mt-2"
-              placeholder="M-Pesa phone number (07XX XXX XXX)"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
+            <input className="input mt-2" placeholder="M-Pesa phone number (07XX XXX XXX)" value={phone} onChange={(e) => setPhone(e.target.value)} />
           )}
         </div>
       </div>
 
-      <div className="card p-6 mb-6">
-        <div className="flex justify-between font-semibold text-lg">
-          <span>Total to pay</span>
-          <span>KSh {total.toFixed(0)}</span>
-        </div>
+      <div className="card p-6 mb-6 space-y-2">
+        <div className="flex justify-between text-sm"><span>Subtotal</span><span>KSh {subtotal.toFixed(0)}</span></div>
+        {couponDiscount > 0 && (
+          <div className="flex justify-between text-sm text-clove2"><span>Coupon ({couponDiscount}%)</span><span>-KSh {couponAmount.toFixed(0)}</span></div>
+        )}
+        <div className="flex justify-between text-sm"><span>Delivery</span><span>{deliveryFee === 0 ? 'Free' : `KSh ${deliveryFee}`}</span></div>
+        <div className="flex justify-between font-semibold text-lg border-t border-mist pt-2"><span>Total to pay</span><span>KSh {total.toFixed(0)}</span></div>
       </div>
 
       {error && <p className="text-sienna mb-4">{error}</p>}

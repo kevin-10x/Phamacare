@@ -30,8 +30,8 @@ describe('Footer', () => {
   });
 
   it('links to shop categories', () => {
-    const prescriptionLink = screen.getByText('Prescription Medicines');
-    expect(prescriptionLink.closest('a')).toHaveAttribute('href', '/shop?category=cat_antibiotics');
+    const painLink = screen.getByText('Pain Killers');
+    expect(painLink.closest('a')).toHaveAttribute('href', '/shop?category=cat_pain_killers');
   });
 
   it('displays copyright', () => {

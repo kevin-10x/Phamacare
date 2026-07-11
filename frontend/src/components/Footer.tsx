@@ -11,19 +11,19 @@ export default function Footer() {
         <div>
           <div className="font-medium text-white mb-3">Shop</div>
           <ul className="space-y-2">
-            <li><Link to="/shop?category=cat_antibiotics" className="hover:text-white transition-colors">Prescription Medicines</Link></li>
-            <li><Link to="/shop?category=cat_pain" className="hover:text-white transition-colors">OTC Medicines</Link></li>
+            <li><Link to="/shop?category=cat_pain_killers" className="hover:text-white transition-colors">Pain Killers</Link></li>
+            <li><Link to="/shop?category=cat_antibiotics" className="hover:text-white transition-colors">Antibiotics</Link></li>
             <li><Link to="/shop?category=cat_vitamins" className="hover:text-white transition-colors">Vitamins &amp; Supplements</Link></li>
-            <li><Link to="/shop?category=cat_baby" className="hover:text-white transition-colors">Mother &amp; Baby</Link></li>
+            <li><Link to="/shop?category=cat_children" className="hover:text-white transition-colors">Children's Medicine</Link></li>
           </ul>
         </div>
         <div>
           <div className="font-medium text-white mb-3">Support</div>
           <ul className="space-y-2">
-            <li><Link to="/prescriptions" className="hover:text-white transition-colors">Talk to a Pharmacist</Link></li>
+            <li><Link to="/interactions" className="hover:text-white transition-colors">Drug Interaction Check</Link></li>
+            <li><Link to="/blog" className="hover:text-white transition-colors">Health Blog</Link></li>
+            <li><Link to="/prescriptions" className="hover:text-white transition-colors">Upload Prescription</Link></li>
             <li><Link to="/dashboard" className="hover:text-white transition-colors">Track My Order</Link></li>
-            <li><Link to="/shop" className="hover:text-white transition-colors">Delivery Areas</Link></li>
-            <li><Link to="/dashboard" className="hover:text-white transition-colors">Contact Us</Link></li>
           </ul>
         </div>
         <div>

@@ -335,6 +335,9 @@ app.post('/api/orders', requireAuth, async (c) => {
   }
   await c.env.DB.prepare('DELETE FROM cart_items WHERE user_id = ?').bind(user.sub).run();
 
+  // Notify user
+  await createNotification(c.env.DB, user.sub, 'Order placed', `Your order #${orderId.slice(-8).toUpperCase()} has been created.`, `/dashboard`);
+
   // --- Payment: M-Pesa STK push stub -------------------------------------
   // Wire up the real Safaricom Daraja API here. See src/mpesa.ts for the
   // request shape; this MVP marks the order pending until a webhook (or the
@@ -403,6 +406,334 @@ app.get('/api/admin/stats', requireAuth, requireRole('admin'), async (c) => {
     lowStock: lowStock.results,
     pendingPrescriptions: pendingRx?.count || 0,
   });
+});
+
+// ---------------------------------------------------------------------------
+// WISHLIST
+// ---------------------------------------------------------------------------
+app.get('/api/wishlist', requireAuth, async (c) => {
+  const user = c.get('user');
+  const { results } = await c.env.DB.prepare(
+    `SELECT w.id as wishlist_id, w.created_at as added_at, m.*
+     FROM wishlist w JOIN medicines m ON m.id = w.medicine_id
+     WHERE w.user_id = ? ORDER BY w.created_at DESC`
+  ).bind(user.sub).all();
+  return c.json({ items: results });
+});
+
+app.post('/api/wishlist', requireAuth, async (c) => {
+  const user = c.get('user');
+  const { medicineId } = await c.req.json();
+  if (!medicineId) return c.json({ error: 'medicineId required' }, 400);
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM wishlist WHERE user_id = ? AND medicine_id = ?'
+  ).bind(user.sub, medicineId).first();
+  if (existing) return c.json({ error: 'Already in wishlist' }, 409);
+  const id = newId('wl');
+  await c.env.DB.prepare(
+    'INSERT INTO wishlist (id, user_id, medicine_id) VALUES (?, ?, ?)'
+  ).bind(id, user.sub, medicineId).run();
+  return c.json({ success: true, id }, 201);
+});
+
+app.delete('/api/wishlist/:medicineId', requireAuth, async (c) => {
+  const user = c.get('user');
+  await c.env.DB.prepare('DELETE FROM wishlist WHERE user_id = ? AND medicine_id = ?')
+    .bind(user.sub, c.req.param('medicineId')).run();
+  return c.json({ success: true });
+});
+
+// ---------------------------------------------------------------------------
+// REVIEWS
+// ---------------------------------------------------------------------------
+app.get('/api/reviews/:medicineId', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT r.*, u.full_name as reviewer_name FROM reviews r
+     JOIN users u ON u.id = r.user_id WHERE r.medicine_id = ?
+     ORDER BY r.created_at DESC`
+  ).bind(c.req.param('medicineId')).all();
+  const stats = await c.env.DB.prepare(
+    'SELECT COUNT(*) as count, COALESCE(AVG(rating),0) as avg_rating FROM reviews WHERE medicine_id = ?'
+  ).bind(c.req.param('medicineId')).first<any>();
+  return c.json({ reviews: results, stats: { count: stats?.count || 0, avg: stats?.avg_rating || 0 } });
+});
+
+app.post('/api/reviews', requireAuth, async (c) => {
+  const user = c.get('user');
+  const { medicineId, rating, comment } = await c.req.json();
+  if (!medicineId || !rating) return c.json({ error: 'medicineId and rating required' }, 400);
+  if (typeof rating !== 'number' || rating < 1 || rating > 5) return c.json({ error: 'Rating must be 1-5' }, 400);
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM reviews WHERE user_id = ? AND medicine_id = ?'
+  ).bind(user.sub, medicineId).first();
+  if (existing) return c.json({ error: 'You already reviewed this medicine' }, 409);
+  const id = newId('rev');
+  await c.env.DB.prepare(
+    'INSERT INTO reviews (id, user_id, medicine_id, rating, comment) VALUES (?,?,?,?,?)'
+  ).bind(id, user.sub, medicineId, rating, comment || null).run();
+  // Update medicine average rating
+  const avg = await c.env.DB.prepare(
+    'SELECT AVG(rating) as avg FROM reviews WHERE medicine_id = ?'
+  ).bind(medicineId).first<any>();
+  await c.env.DB.prepare('UPDATE medicines SET rating = ? WHERE id = ?')
+    .bind(Math.round((avg?.avg || 0) * 10) / 10, medicineId).run();
+  return c.json({ success: true, id }, 201);
+});
+
+// ---------------------------------------------------------------------------
+// COUPONS
+// ---------------------------------------------------------------------------
+app.post('/api/coupons/validate', requireAuth, async (c) => {
+  const { code, cartTotal } = await c.req.json();
+  if (!code) return c.json({ error: 'Coupon code required' }, 400);
+  const coupon = await c.env.DB.prepare(
+    'SELECT * FROM coupons WHERE code = ? AND active = 1'
+  ).bind(code.toUpperCase()).first<any>();
+  if (!coupon) return c.json({ error: 'Invalid coupon code' }, 404);
+  if (coupon.used_count >= coupon.max_uses) return c.json({ error: 'Coupon usage limit reached' }, 400);
+  if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) return c.json({ error: 'Coupon has expired' }, 400);
+  if (cartTotal && cartTotal < coupon.min_cart_total) return c.json({ error: `Minimum cart total is KSh ${coupon.min_cart_total}` }, 400);
+  return c.json({ valid: true, discountPercent: coupon.discount_percent, code: coupon.code });
+});
+
+// ---------------------------------------------------------------------------
+// NOTIFICATIONS
+// ---------------------------------------------------------------------------
+app.get('/api/notifications', requireAuth, async (c) => {
+  const user = c.get('user');
+  const { results } = await c.env.DB.prepare(
+    'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50'
+  ).bind(user.sub).all();
+  const unread = await c.env.DB.prepare(
+    'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0'
+  ).bind(user.sub).first<any>();
+  return c.json({ notifications: results, unreadCount: unread?.count || 0 });
+});
+
+app.put('/api/notifications/:id/read', requireAuth, async (c) => {
+  const user = c.get('user');
+  await c.env.DB.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?')
+    .bind(c.req.param('id'), user.sub).run();
+  return c.json({ success: true });
+});
+
+app.put('/api/notifications/read-all', requireAuth, async (c) => {
+  const user = c.get('user');
+  await c.env.DB.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0')
+    .bind(user.sub).run();
+  return c.json({ success: true });
+});
+
+// ---------------------------------------------------------------------------
+// ADDRESSES
+// ---------------------------------------------------------------------------
+app.get('/api/addresses', requireAuth, async (c) => {
+  const user = c.get('user');
+  const { results } = await c.env.DB.prepare(
+    'SELECT * FROM addresses WHERE user_id = ? ORDER BY is_default DESC, created_at DESC'
+  ).bind(user.sub).all();
+  return c.json({ addresses: results });
+});
+
+app.post('/api/addresses', requireAuth, async (c) => {
+  const user = c.get('user');
+  const { label, fullAddress, isDefault } = await c.req.json();
+  if (!fullAddress) return c.json({ error: 'Address required' }, 400);
+  if (isDefault) {
+    await c.env.DB.prepare('UPDATE addresses SET is_default = 0 WHERE user_id = ?').bind(user.sub).run();
+  }
+  const id = newId('addr');
+  await c.env.DB.prepare(
+    'INSERT INTO addresses (id, user_id, label, full_address, is_default) VALUES (?,?,?,?,?)'
+  ).bind(id, user.sub, label || 'Home', fullAddress, isDefault ? 1 : 0).run();
+  return c.json({ success: true, id }, 201);
+});
+
+app.delete('/api/addresses/:id', requireAuth, async (c) => {
+  const user = c.get('user');
+  await c.env.DB.prepare('DELETE FROM addresses WHERE id = ? AND user_id = ?')
+    .bind(c.req.param('id'), user.sub).run();
+  return c.json({ success: true });
+});
+
+// ---------------------------------------------------------------------------
+// PROFILE UPDATE
+// ---------------------------------------------------------------------------
+app.put('/api/auth/profile', requireAuth, async (c) => {
+  const user = c.get('user');
+  const { fullName, phone } = await c.req.json();
+  if (fullName) await c.env.DB.prepare('UPDATE users SET full_name = ? WHERE id = ?').bind(fullName, user.sub).run();
+  if (phone !== undefined) await c.env.DB.prepare('UPDATE users SET phone = ? WHERE id = ?').bind(phone || null, user.sub).run();
+  return c.json({ success: true });
+});
+
+// ---------------------------------------------------------------------------
+// DRUG INTERACTION CHECKER
+// ---------------------------------------------------------------------------
+app.get('/api/interactions', async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT * FROM drug_interactions ORDER BY severity DESC').all();
+  return c.json({ interactions: results });
+});
+
+app.post('/api/interactions/check', async (c) => {
+  const { drugs } = await c.req.json();
+  if (!Array.isArray(drugs) || drugs.length < 2) return c.json({ error: 'Provide an array of at least 2 drug names' }, 400);
+  const normalized = drugs.map((d: string) => d.toLowerCase().trim());
+  const { results } = await c.env.DB.prepare('SELECT * FROM drug_interactions').all();
+  const found: any[] = [];
+  for (const interaction of results as any[]) {
+    const a = interaction.drug_a.toLowerCase();
+    const b = interaction.drug_b.toLowerCase();
+    if ((normalized.includes(a) && normalized.includes(b))) {
+      found.push(interaction);
+    }
+  }
+  return c.json({ interactions: found, checked: normalized });
+});
+
+// ---------------------------------------------------------------------------
+// BLOG
+// ---------------------------------------------------------------------------
+app.get('/api/blog', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, title, slug, excerpt, author, image_url, created_at FROM blog_posts WHERE published = 1 ORDER BY created_at DESC'
+  ).all();
+  return c.json({ posts: results });
+});
+
+app.get('/api/blog/:slug', async (c) => {
+  const post = await c.env.DB.prepare(
+    'SELECT * FROM blog_posts WHERE slug = ? AND published = 1'
+  ).bind(c.req.param('slug')).first();
+  if (!post) return c.json({ error: 'Not found' }, 404);
+  return c.json({ post });
+});
+
+// ---------------------------------------------------------------------------
+// SEED NOTIFICATION on order creation (helper)
+// ---------------------------------------------------------------------------
+async function createNotification(db: D1Database, userId: string, title: string, message: string, link?: string) {
+  const id = newId('ntf');
+  await db.prepare(
+    'INSERT INTO notifications (id, user_id, title, message, link) VALUES (?,?,?,?,?)'
+  ).bind(id, userId, title, message, link || null).run();
+}
+
+// ---------------------------------------------------------------------------
+// ADMIN: manage users & pharmacist list
+// ---------------------------------------------------------------------------
+app.get('/api/admin/users', requireAuth, requireRole('admin'), async (c) => {
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, email, full_name, phone, role, loyalty_points, created_at FROM users ORDER BY created_at DESC LIMIT 200'
+  ).all();
+  return c.json({ users: results });
+});
+
+app.get('/api/admin/pharmacists', requireAuth, requireRole('admin'), async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, email, full_name, phone, created_at FROM users WHERE role = 'pharmacist'"
+  ).all();
+  return c.json({ pharmacists: results });
+});
+
+// ---------------------------------------------------------------------------
+// INVENTORY MANAGEMENT (Suppliers + Stock Batches)
+// ---------------------------------------------------------------------------
+app.get('/api/admin/suppliers', requireAuth, requireRole('admin'), async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT * FROM suppliers ORDER BY name').all();
+  return c.json({ suppliers: results });
+});
+
+app.post('/api/admin/suppliers', requireAuth, requireRole('admin'), async (c) => {
+  const b = await c.req.json();
+  if (!b.name) return c.json({ error: 'Supplier name required' }, 400);
+  const id = newId('sup');
+  await c.env.DB.prepare(
+    'INSERT INTO suppliers (id, name, contact_person, phone, email, address) VALUES (?,?,?,?,?,?)'
+  ).bind(id, b.name, b.contactPerson || null, b.phone || null, b.email || null, b.address || null).run();
+  return c.json({ id }, 201);
+});
+
+app.get('/api/admin/batches', requireAuth, requireRole('admin'), async (c) => {
+  const { medicineId } = c.req.query();
+  let query = `SELECT sb.*, m.brand_name, m.generic_name, s.name as supplier_name
+               FROM stock_batches sb
+               JOIN medicines m ON m.id = sb.medicine_id
+               LEFT JOIN suppliers s ON s.id = sb.supplier_id`;
+  const params: any[] = [];
+  if (medicineId) {
+    query += ' WHERE sb.medicine_id = ?';
+    params.push(medicineId);
+  }
+  query += ' ORDER BY sb.expiry_date ASC';
+  const { results } = await c.env.DB.prepare(query).bind(...params).all();
+  return c.json({ batches: results });
+});
+
+app.post('/api/admin/batches', requireAuth, requireRole('admin'), async (c) => {
+  const b = await c.req.json();
+  if (!b.medicineId || !b.batchNumber || !b.quantity || !b.expiryDate) {
+    return c.json({ error: 'medicineId, batchNumber, quantity, and expiryDate are required' }, 400);
+  }
+  const id = newId('bat');
+  await c.env.DB.prepare(
+    `INSERT INTO stock_batches (id, medicine_id, supplier_id, batch_number, quantity, purchase_price, selling_price, expiry_date, notes)
+     VALUES (?,?,?,?,?,?,?,?,?)`
+  ).bind(
+    id, b.medicineId, b.supplierId || null, b.batchNumber, b.quantity,
+    b.purchasePrice || 0, b.sellingPrice || null, b.expiryDate, b.notes || null
+  ).run();
+  // Update medicine stock quantity
+  await c.env.DB.prepare(
+    'UPDATE medicines SET stock_quantity = stock_quantity + ? WHERE id = ?'
+  ).bind(b.quantity, b.medicineId).run();
+  return c.json({ id }, 201);
+});
+
+app.get('/api/admin/low-stock', requireAuth, requireRole('admin'), async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT m.id, m.brand_name, m.generic_name, m.stock_quantity, m.dosage_form,
+            (SELECT MIN(sb.expiry_date) FROM stock_batches sb WHERE sb.medicine_id = m.id AND sb.expiry_date > date('now')) as next_expiry,
+            (SELECT SUM(sb.quantity) FROM stock_batches sb WHERE sb.medicine_id = m.id AND sb.expiry_date > date('now')) as batch_stock
+     FROM medicines m
+     WHERE m.stock_quantity < 50
+     ORDER BY m.stock_quantity ASC LIMIT 30`
+  ).all();
+  return c.json({ lowStock: results });
+});
+
+app.get('/api/admin/expiring', requireAuth, requireRole('admin'), async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT sb.*, m.brand_name, m.generic_name, s.name as supplier_name
+     FROM stock_batches sb
+     JOIN medicines m ON m.id = sb.medicine_id
+     LEFT JOIN suppliers s ON s.id = sb.supplier_id
+     WHERE sb.expiry_date <= date('now', '+90 days') AND sb.expiry_date > date('now')
+     ORDER BY sb.expiry_date ASC LIMIT 50`
+  ).all();
+  return c.json({ expiring: results });
+});
+
+// ---------------------------------------------------------------------------
+// CART: apply coupon
+// ---------------------------------------------------------------------------
+app.post('/api/cart/coupon', requireAuth, async (c) => {
+  const user = c.get('user');
+  const { couponCode } = await c.req.json();
+  if (!couponCode) return c.json({ error: 'Coupon code required' }, 400);
+  const coupon = await c.env.DB.prepare(
+    'SELECT * FROM coupons WHERE code = ? AND active = 1'
+  ).bind(couponCode.toUpperCase()).first<any>();
+  if (!coupon) return c.json({ error: 'Invalid coupon code' }, 404);
+  if (coupon.used_count >= coupon.max_uses) return c.json({ error: 'Coupon usage limit reached' }, 400);
+  if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) return c.json({ error: 'Coupon has expired' }, 400);
+  const { results: cartItems } = await c.env.DB.prepare(
+    `SELECT ci.quantity, m.price, m.discount_percent FROM cart_items ci
+     JOIN medicines m ON m.id = ci.medicine_id WHERE ci.user_id = ?`
+  ).bind(user.sub).all<any>();
+  const cartTotal = cartItems.reduce((sum: number, i: any) => sum + i.quantity * i.price * (1 - i.discount_percent / 100), 0);
+  if (cartTotal < coupon.min_cart_total) return c.json({ error: `Minimum cart total is KSh ${coupon.min_cart_total}` }, 400);
+  return c.json({ valid: true, discountPercent: coupon.discount_percent, code: coupon.code });
 });
 
 export default app;
