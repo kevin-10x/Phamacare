@@ -18,9 +18,9 @@ database_id = "4aad797d-ab44-4a41-b385-1a9598ecd5aa"
 # Create with `wrangler r2 bucket create pharmacare-prescriptions`, then
 # uncomment the block below and re-deploy.
 # ---------------------------------------------------------------------------
-# [[r2_buckets]]
-# binding = "PRESCRIPTIONS"
-# bucket_name = "pharmacare-prescriptions"
+[[r2_buckets]]
+binding = "PRESCRIPTIONS"
+bucket_name = "pharmacare-prescriptions"
 
 # ---------------------------------------------------------------------------
 # Secrets (set with `wrangler secret put <NAME>`, never commit real values):
