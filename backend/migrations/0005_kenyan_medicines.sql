@@ -48,7 +48,7 @@ INSERT INTO categories (id, name, slug, icon, requires_prescription) VALUES
  ('cat_skin_2', 'Skin Care Medicines', 'skin-care-medicines', '🧴', 1),
  ('cat_family_plan', 'Family Planning', 'family-planning', '🚼', 1),
  ('cat_pregnancy', 'Pregnancy & Maternal', 'pregnancy-maternal', '🤰', 0),
- ('cat_children', 'Children\'s Medicine', 'childrens-medicine', '👶', 1),
+ ('cat_children', 'Childrens Medicine', 'childrens-medicine', '👶', 1),
  ('cat_hiv', 'HIV / ARVs', 'hiv-arvs', '🧬', 1),
  ('cat_tb', 'TB Medicines', 'tb-medicines', '🫁', 1),
  ('cat_deworming', 'Deworming', 'deworming', '🪱', 0),
