@@ -11,15 +11,16 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "pharmacare-db"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "4aad797d-ab44-4a41-b385-1a9598ecd5aa"
 
 # ---------------------------------------------------------------------------
 # R2 bucket — stores uploaded prescription images/PDFs.
-# Create with `wrangler r2 bucket create pharmacare-prescriptions`.
+# Create with `wrangler r2 bucket create pharmacare-prescriptions`, then
+# uncomment the block below and re-deploy.
 # ---------------------------------------------------------------------------
-[[r2_buckets]]
-binding = "PRESCRIPTIONS"
-bucket_name = "pharmacare-prescriptions"
+# [[r2_buckets]]
+# binding = "PRESCRIPTIONS"
+# bucket_name = "pharmacare-prescriptions"
 
 # ---------------------------------------------------------------------------
 # Secrets (set with `wrangler secret put <NAME>`, never commit real values):
@@ -29,4 +30,4 @@ bucket_name = "pharmacare-prescriptions"
 # ---------------------------------------------------------------------------
 [vars]
 ENVIRONMENT = "production"
-CORS_ORIGIN = "*"
+CORS_ORIGIN = "https://pharmacare-eez.pages.dev"
