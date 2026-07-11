@@ -18,7 +18,7 @@ export default function ProductDetail() {
     api.get(`/api/medicines/${id}`).then((d) => {
       setMedicine(d.medicine);
       setSimilar(d.similar || []);
-    });
+    }).catch(() => {});
   }, [id]);
 
   if (!medicine) return <div className="max-w-6xl mx-auto px-4 py-16">Loading…</div>;

@@ -6,8 +6,8 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<any[]>([]);
 
   useEffect(() => {
-    api.get('/api/admin/stats').then(setStats);
-    api.get('/api/admin/orders').then((d) => setOrders(d.orders || []));
+    api.get('/api/admin/stats').then(setStats).catch(() => {});
+    api.get('/api/admin/orders').then((d) => setOrders(d.orders || [])).catch(() => {});
   }, []);
 
   async function updateStatus(id: string, status: string) {

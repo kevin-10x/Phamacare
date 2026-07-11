@@ -6,7 +6,7 @@ export default function PharmacistDashboard() {
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   function load() {
-    api.get('/api/prescriptions/queue').then((d) => setQueue(d.prescriptions || []));
+    api.get('/api/prescriptions/queue').then((d) => setQueue(d.prescriptions || [])).catch(() => {});
   }
 
   useEffect(() => {

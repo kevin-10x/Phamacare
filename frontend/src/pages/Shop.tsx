@@ -13,7 +13,7 @@ export default function Shop() {
   const search = params.get('search') || '';
 
   useEffect(() => {
-    api.get('/api/categories').then((d) => setCategories(d.categories || []));
+    api.get('/api/categories').then((d) => setCategories(d.categories || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -24,6 +24,7 @@ export default function Shop() {
     api
       .get(`/api/medicines?${qs.toString()}`)
       .then((d) => setMedicines(d.medicines || []))
+      .catch(() => setMedicines([]))
       .finally(() => setLoading(false));
   }, [category, search]);
 

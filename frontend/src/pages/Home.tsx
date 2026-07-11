@@ -8,8 +8,8 @@ export default function Home() {
   const [featured, setFeatured] = useState<any[]>([]);
 
   useEffect(() => {
-    api.get('/api/categories').then((d) => setCategories(d.categories || []));
-    api.get('/api/medicines?featured=true').then((d) => setFeatured(d.medicines || []));
+    api.get('/api/categories').then((d) => setCategories(d.categories || [])).catch(() => {});
+    api.get('/api/medicines?featured=true').then((d) => setFeatured(d.medicines || [])).catch(() => {});
   }, []);
 
   return (

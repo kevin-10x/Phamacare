@@ -16,7 +16,7 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<any[]>([]);
 
   useEffect(() => {
-    api.get('/api/orders/mine').then((d) => setOrders(d.orders || []));
+    api.get('/api/orders/mine').then((d) => setOrders(d.orders || [])).catch(() => {});
   }, []);
 
   return (

@@ -20,7 +20,7 @@ export default function Checkout() {
     if (needsRx) {
       api.get('/api/prescriptions/mine').then((d) =>
         setPrescriptions((d.prescriptions || []).filter((p: any) => p.status === 'approved'))
-      );
+      ).catch(() => {});
     }
   }, [needsRx]);
 

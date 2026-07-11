@@ -14,7 +14,7 @@ export default function Prescriptions() {
   const [list, setList] = useState<any[]>([]);
 
   function loadList() {
-    api.get('/api/prescriptions/mine').then((d) => setList(d.prescriptions || []));
+    api.get('/api/prescriptions/mine').then((d) => setList(d.prescriptions || [])).catch(() => {});
   }
 
   useEffect(() => {
